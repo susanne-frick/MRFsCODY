@@ -194,9 +194,10 @@ loads_paper
 header <- list()
 header$pos <- list(-1)
 header$command <- c("\\hline \n Area & Task & Trial & \\multicolumn{2}{c}{Level} & \\multicolumn{2}{c}{Level Difference} & Time \\\\
-                    \\multicolumn{3}{c}{} & PC1 & PC2 & PC1 & PC2 & PC1 \\\\
-                    \\multicolumn{8}{l}{\small \textit{Note.} A = number-size-connection, B = facts and calculating,
-                    C = part-whole-understanding, D = working memory, E = decimal system}")
+                    \\multicolumn{3}{c}{} & PC1 & PC2 & PC1 & PC2 & PC1 \\\\",
+                    "\\hline \\multicolumn{8}{l}{\\small \\textit{Note.} A = number-size-connection, B = facts and calculating}\\\\
+                    \\multicolumn{8}{l}{\\small C = part-whole-understanding, D = working memory}\\\\
+                    \\multicolumn{8}{l}{\\small E = decimal system.}\\\\")
 
 for(i in 2:6) {
   header$pos <- list(-1, nrow(loads_paper[[i-1]]))
@@ -205,11 +206,14 @@ for(i in 2:6) {
                        caption = paste0("Loadings for the Principal Components extracted from the Predictors Up to T", i),
                        label = paste0("tb:PCA_loadings_T", i)),
         include.colnames = FALSE, include.rownames = FALSE,
-        hline.after=c(-1, 0, nrow(loads_paper[[i-1]])),
+        hline.after=c(0),
         sanitize.rownames.function=function(x){x},
         sanitize.colnames.function = function(x){x},
         sanitize.text.function = function(x){x},
         NA.string = "", table.placement = "htp", add.to.row = header,
         caption.placement = "top", latex.environments = NULL,
         file = paste0(dir_manuscript, "tables/textable_pca_loads_T", i, ".tex"))
+  file.copy(from = paste0(dir_manuscript, "tables/textable_pca_loads_T", i, ".tex"),
+            to = paste0("~/Dokumente/FAIR/Reha/paper/SOM/tables/textable_pca_loads_T", i, ".tex"),
+            overwrite = TRUE)
 }
