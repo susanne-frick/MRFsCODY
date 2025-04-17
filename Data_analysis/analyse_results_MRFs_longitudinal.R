@@ -8,10 +8,31 @@ library(colorspace)
 mean_mse <- readRDS("Data_analysis/mean_mse_MRFs.rds")
 
 dir_manuscript <- "~/Dokumente/FAIR/Reha/paper/MRFs CODY/"
+dir_som <- "~/Dokumente/FAIR/Reha/paper/SOM"
 
 # re-build design list
 G <- 6
 fit_list_short <- readRDS("Data_analysis/fit_list_short.rds")
+
+color_columns <- function(df, identifier = "T") {
+  df_unlist <- unlist(df[, grep(identifier, colnames(df))])
+  df_unlist[is.na(df_unlist)] <- ""
+  df[, grep(identifier, colnames(df))] <- matrix(paste(
+    paste0("\\cellcolor{",
+           ifelse(is.na(df), "white", ifelse(df < .05, "green!30", "white")),
+           "}"),
+    format(df_unlist, nsmall = 3)
+  ), nrow = nrow(df))
+
+  return(df)
+}
+
+# cutoffs for R^2 = 1 - MSE/Var(Outcome); with Var(Outcome) = 1
+custom_cut <- function(vec) cut(vec,
+                                breaks = c(0, .75, .84, .91, 10),
+                                include.lowest = TRUE,
+                                labels = c("large", "medium", "small", "tiny"))
+
 
 print_tab <- function(tab, name_rownames = NULL, file, addr = NULL, ...) {
   # change rownames to first column if rownames title is given
@@ -24,7 +45,7 @@ print_tab <- function(tab, name_rownames = NULL, file, addr = NULL, ...) {
     hl <- c(-1, 0, nrow(tab))
   }
 
-  print(xtable::xtable(tab, digits=3, ...),
+  print(xtable::xtable(tab, digits=2, ...),
         include.colnames = T, include.rownames = is.null(name_rownames),
         hline.after = hl,
         add.to.row = addr,
@@ -47,10 +68,14 @@ mse_long_basic$timepoint <- factor(mse_long_basic$timepoint)
 head(mse_long_basic)
 
 
+# tried out log scale -> not used in favor of interpretability
 plot_basic_long <- ggplot(data = mse_long_basic, aes(y = mse, x=timepoint)) +
-  geom_violin(show.legend=FALSE, fill = qualitative_hcl(3)[1]) +
+# plot_basic_long <- ggplot(data = mse_long_basic, aes(y = -log(mse), x=timepoint)) +
+  geom_violin(width = 1.2, show.legend=FALSE, fill = qualitative_hcl(3)[1]) +
+  geom_boxplot(width = 0.2, alpha = 0.2, color = "black") +
+  ylim(0, 5) +
+  # labs(y="log(MSE)", x="Timepoint") +
   labs(y="MSE", x="Timepoint") +
-  # scale_fill_manual(values=qualitative_hcl(3)[1])
   theme(axis.text=element_text(size=11),
         axis.title=element_text(size=11),
         title=element_text(size = 11)) +
@@ -62,45 +87,48 @@ plot_basic_long <- ggplot(data = mse_long_basic, aes(y = mse, x=timepoint)) +
 fs <- which(fit_list_short$outcome == "multi_long" & fit_list_short$predictors == "training")
 fit_list_short[fs, ]
 
+## re-structured: until T1,...T6 on the x axis, panel for each outcome
+mse_long <- vector("list", length(fs))
+for (f in fs) {
+  mse_long[[f - fs[1] + 1]] <- data.frame("id" = rep(mean_mse[[f]]$ids, G),
+                         "timepoint" = rep(1:G, each = nrow(mean_mse[[f]])),
+                         "mse" = do.call(c, mean_mse[[f]][ , 2:(G + 1)]))
+  mse_long$timepoint <- factor(mse_long$timepoint)
+  print(head(mse_long))
+}
+lapply(mse_long, nrow)
+mse_long_until <- do.call(rbind, mse_long)
+mse_long_until$until <- rep(1:G, do.call(c, lapply(mse_long, nrow)))
+mse_long_until$until <- factor(mse_long_until$until)
+
 plot_list <- vector("list", length = G)
 
-for (f in fs) {
-  mse_long <- data.frame("id" = rep(mean_mse[[f]]$ids, G),
-                               "timepoint" = rep(1:G, each = nrow(mean_mse[[f]])),
-                               "mse" = do.call(c, mean_mse[[f]][ , 2:(G + 1)]))
-  mse_long$timepoint <- factor(mse_long$timepoint)
-  head(mse_long)
-
-
-  plot_list[[f - fs[1] + 1]] <- ggplot(data = mse_long, aes(y = mse, x=timepoint)) +
-    geom_violin(show.legend=FALSE, fill = qualitative_hcl(3)[2]) +
-    labs(y="MSE", x="Timepoint") +
+for (g in 1:G) {
+  plot_list[[g]] <- ggplot(data = mse_long_until[mse_long_until$timepoint == g,], aes(y = mse, x=until)) +
+    geom_violin(width = 1, show.legend=FALSE, fill = RColorBrewer::brewer.pal(n = 3, name = "Set3")[2]) +
+    geom_boxplot(width = 0.2, alpha = 0.2) +
+    geom_hline(yintercept = 1 - .09, color = "azure4", linetype = 3) +
+    geom_hline(yintercept = 1 - .16, color = "azure4", linetype = 2) +
+    geom_hline(yintercept = 1 - .25, color = "azure4", linetype = 1) +
+    labs(y="MSE", x="Training Until Timepoint") +
     theme(axis.text=element_text(size=11),
           axis.title=element_text(size=11),
           title=element_text(size = 11)) +
-    scale_y_continuous(limits = c(0, 6.5)) +
-    ggtitle(label = paste0("Training T", f - fs[1] + 1))
+    scale_y_continuous(limits = c(0, 4)) + #(0, 6.5)
+    ggtitle(label = paste0("Status Test T", g))
 
 }
-
 ggsave(marrangeGrob(plot_list, layout_matrix = matrix(1:G, 2, 3, byrow = TRUE), top = NULL),
-       file="plots/plots_mse_longitudinal.pdf",
+       file="plots/plots_mse_longitudinal_until.pdf",
        width=30, height=15, units="cm")
-file.copy(from = "plots/plots_mse_longitudinal.pdf", to = paste0(dir_manuscript, "/figures"), overwrite = TRUE)
+file.copy(from = "plots/plots_mse_longitudinal_until.pdf", to = paste0(dir_manuscript, "/figures"), overwrite = TRUE)
 
-ggsave(grid.arrange(plot_basic_long + scale_y_continuous(limits = c(0,8)),
-                    plot_list[[2]]  + scale_y_continuous(limits = c(0,8)),
-                    plot_list[[6]] + scale_y_continuous(limits = c(0,8)),
-                    nrow = 1, ncol = 3),
-       file = "plots/plot_longitudinal_basic-training-T6.pdf",
-       width = 30, height = 9, units = "cm")
-file.copy(from = "plots/plot_longitudinal_basic-training-T6.pdf", to = paste0(dir_manuscript, "/figures"), overwrite = TRUE)
 
 # Kolmogorov-Smirnov test for T6, data until T6 vs. T5 to T1
 lapply(mean_mse[fs], nrow)
 
 
-# Kolmogorov-Smirnov test and Wasserstein distance for predictors up to T1 to T5 vs. T6
+# Kolmogorov-Smirnov test and Wasserstein distance for predictors until T1 to T5 vs. T6
 # Wasserstein with p = 2 (squared distance)
 # for each outcome (T1-T6) separately
 table_w_timepoints <- table_p_timepoints <- matrix(NA, 5, 6)
@@ -115,36 +143,33 @@ for(o in 1:6) {
   }
 }
 
-table_timepoints <- cbind(round(table_p_timepoints, 3),
-                          round(table_w_timepoints, 3)
-)
+table_p_timepoints <- round(table_p_timepoints, 2)
+table_w_timepoints <- round(table_w_timepoints, 2)
+summary(c(table_w_timepoints))
 
-# exemplarily for up to T1 versus up to T6
-desc_timepoints <- cbind(apply(mean_mse[[fs[1]]][, -c(1,8)], 2, summary),
-                         apply(mean_mse[[fs[6]]][, -c(1,8)], 2, summary)
-)
-desc_timepoints <- round(desc_timepoints, 3)
+# exemplarily for until T1 versus until T6
+desc_timepoints <- rbind(
+  cbind(apply(mean_mse[[fs[1]]][, -c(1,8)], 2, summary),
+        apply(mean_mse[[fs[6]]][, -c(1,8)], 2, summary)),
+  cbind(apply(mean_mse[[fs[1]]][, -c(1,8)], 2, function(cl) table(custom_cut(cl))/length(cl)),
+        apply(mean_mse[[fs[6]]][, -c(1,8)], 2, function(cl) table(custom_cut(cl))/length(cl))))
+desc_timepoints <- round(desc_timepoints, 2)
 colnames(desc_timepoints) <- rep(paste0("T", 1:G), 2)
-rownames(desc_timepoints) <- c("Minimum", "1st Quartile", "Median", "Mean", "3rd Quartile", "Maximum")
+rownames(desc_timepoints) <- c("Minimum", "1st Quartile", "Median", "Mean", "3rd Quartile", "Maximum",
+                               "\\% large", "\\% medium", "\\% small", "\\% tiny")
 desc_timepoints
 
-
-print_tab(table_timepoints,
-          name_rownames = "Up to",
-          file = paste0(dir_manuscript, "/tables/table_timepoints.tex"),
-          addr = list("pos" = list(-1),
-          "command" = c("\\hline \n & \\multicolumn{6}{c}{Kolmogorov-Smirnov p-value} & \\multicolumn{6}{c}{Wasserstein Distance} \\\\ \\cmidrule{2-7} \\cmidrule{8-13}")
-          ),
-          caption = "Tests for Differences in the Distributions of Mean Squared Error for the Training Predictors up to T6 versus T1 to T5 for the Multivariate Random Forests.",
-          label = "tb:test_mse_timepoints")
+median(desc_timepoints["\\% large",])
+median(desc_timepoints["\\% tiny",])
 
 print_tab(desc_timepoints,
           name_rownames = "Statistic",
-          file = paste0(dir_manuscript, "/tables/descriptives_timepoints.tex"),
-          addr = list("pos" = list(-1),
-                      "command" = c("\\hline \n & \\multicolumn{6}{c}{Training Predictors up to T1} & \\multicolumn{6}{c}{Training Predictors up to T6} \\\\ \\cmidrule{2-7} \\cmidrule{8-13}")
+          file = paste0(dir_som, "/tables/descriptives_timepoints.tex"),
+          addr = list("pos" = list(-1, 6),
+                      "command" = c("\\hline \n & \\multicolumn{6}{c}{Training Predictors until T1} & \\multicolumn{6}{c}{Training Predictors until T6} \\\\ \\cmidrule{2-7} \\cmidrule{8-13}",
+                                    "\\hline \n Explained Var. & \\multicolumn{12}{c}{} \\\\ \\hline \n")
           ),
-          caption = "Descriptives on the Distributions of Mean Squared Error for the Training Predictors up to T1 versus T6 for the Multivariate Random Forests.",
+          caption = "Descriptives on the Distributions of Mean Squared Error for the Training Predictors until T1 versus T6 for the Multivariate Random Forests.",
           label = "tb:desc_mse_timepoints")
 
 ####-------------- basic versus training predictors ----------------------------------####
@@ -166,34 +191,62 @@ for(o in 1:6) {
 }
 # ties in the training data
 
-table_basic <- cbind(round(table_p_basic, 3),
-                          round(table_w_basic, 3)
-)
+table_p_basic <- round(table_p_basic, 2)
+table_w_basic <-  round(table_w_basic, 2)
+summary(c(table_w_basic))
 
-# exemplarily for up to T1 versus up to T6
-desc_basic <- apply(mean_mse[[f_basic]][, -c(1,8)], 2, summary)
-desc_basic <- round(desc_basic, 3)
+# exemplarily for until T1 versus until T6
+desc_basic <- rbind(apply(mean_mse[[f_basic]][, -c(1,8)], 2, summary),
+                    apply(mean_mse[[f_basic]][, -c(1,8)], 2, function(cl) table(custom_cut(cl))/length(cl)))
+desc_basic <- round(desc_basic, 2)
 colnames(desc_basic) <- paste0("T", 1:G)
-rownames(desc_basic) <- c("Minimum", "1st Quartile", "Median", "Mean", "3rd Quartile", "Maximum")
+rownames(desc_basic) <- c("Minimum", "1st Quartile", "Median", "Mean", "3rd Quartile", "Maximum",
+                          "\\% large", "\\% medium", "\\% small", "\\% tiny")
 desc_basic
-
-print_tab(table_basic,
-          name_rownames = "Up to",
-          file = paste0(dir_manuscript, "/tables/table_basic.tex"),
-          addr = list("pos" = list(-1),
-                      "command" = c("\\hline \n & \\multicolumn{6}{c}{Kolmogorov-Smirnov p-value} & \\multicolumn{6}{c}{Wasserstein Distance} \\\\ \\cmidrule{2-7} \\cmidrule{8-13}")
-          ),
-          caption = "Tests for Differences in the Distributions of Mean Squared Error for the Basic versus the Training Predictors for the Multivariate Random Forests.",
-          label = "tb:test_mse_basic")
+apply(desc_basic[7:10,], 1, median)
 
 print_tab(desc_basic,
           name_rownames = "Statistic",
-          file = paste0(dir_manuscript, "/tables/descriptives_basic.tex"),
-          addr = list("pos" = list(-1),
-                      "command" = c("\\hline \n")
+          file = paste0(dir_som, "/tables/descriptives_basic.tex"),
+          addr = list("pos" = list(-1, 6),
+                      "command" = c("\\hline \n",
+                                    "\\hline \n Explained Var. & \\multicolumn{6}{c}{} \\\\ \\hline \n")
           ),
           caption = "Descriptives on the Distributions of Mean Squared Error for the Basic Predictors for the Multivariate Random Forests.",
           label = "tb:desc_mse_basic")
+
+#####---------------- joint tables for timepoints and basic vs. training --------------####
+
+table_w_timepoints
+table_w_basic
+
+table_w_basic_timepoints <- cbind(table_w_basic, rbind(table_w_timepoints, rep(NA, ncol(table_w_timepoints))))
+table_w_basic_timepoints
+
+print_tab(table_w_basic_timepoints,
+          name_rownames = "Until",
+          file = paste0(dir_manuscript, "/tables/table_predictors.tex"),
+          addr = list("pos" = list(-1),
+                      "command" = c("\\hline \n & \\multicolumn{6}{c}{Basic versus Training} & \\multicolumn{6}{c}{Versus until T6} \\\\ \\cmidrule{2-7} \\cmidrule{8-13}")
+          ),
+          caption = "Wasserstein Distances between the Distributions of Mean Squared Error Based on Different Predictor Sets for the Multivariate Random Forests.",
+          label = "tb:wasserstein_mse_predictors")
+
+
+table_p_timepoints
+table_p_basic
+
+table_p_basic_timepoints <- cbind(table_p_basic, rbind(table_p_timepoints, rep(NA, ncol(table_p_timepoints))))
+table_p_basic_timepoints <- color_columns(table_p_basic_timepoints)
+
+print_tab(table_p_basic_timepoints,
+          name_rownames = "Until",
+          file = paste0(dir_som, "/tables/table_tests_predictors.tex"),
+          addr = list("pos" = list(-1),
+                      "command" = c("\\hline \n & \\multicolumn{6}{c}{Basic versus Training} & \\multicolumn{6}{c}{Versus until T6} \\\\ \\cmidrule{2-7} \\cmidrule{8-13}")
+          ),
+          caption = "Kolmogorov-Smirnov p-values for Comparisons of the Distributions of Mean Squared Error Based on Different Predictor Sets for the Multivariate Random Forests.",
+          label = "tb:ks_mse_predictors")
 
 ####-------------- comparison with univariate sum score, separately for the 6 timepoints --------####
 
@@ -208,16 +261,8 @@ mse_uni_basic$timepoint <- factor(mse_uni_basic$timepoint)
 head(mse_uni_basic)
 
 
-plot_basic_uni <- ggplot(data = mse_uni_basic, aes(y = mse, x=timepoint)) +
-  geom_violin(show.legend=FALSE, fill = qualitative_hcl(3)[1]) +
-  labs(y="MSE", x="Timepoint") +
-  theme(axis.text=element_text(size=11),
-        axis.title=element_text(size=11),
-        title=element_text(size = 11)) +
-  ggtitle(label = "Univariate, Pre-test & Grade")
-
 # training predictors
-# ! up to T3 for T4-T6
+# ! until T3 for T4-T6
 fs <- which(fit_list_short$outcome == "uni" & fit_list_short$predictors == "training3")
 lapply(mean_mse[fs], nrow)
 
@@ -229,14 +274,6 @@ mse_uni_training$timepoint <- factor(mse_uni_training$timepoint)
 head(mse_uni_training)
 
 
-plot_training_uni <- ggplot(data = mse_uni_training, aes(y = mse, x=timepoint)) +
-  geom_violin(show.legend=FALSE, fill = qualitative_hcl(3)[2]) +
-  labs(y="MSE", x="Timepoint") +
-  theme(axis.text=element_text(size=11),
-        axis.title=element_text(size=11),
-        title=element_text(size = 11)) +
-  ggtitle(label = "Univariate, Training up to T3")
-
 f <- which(fit_list_short$outcome == "multi_long" & fit_list_short$predictors == "training" & fit_list_short$timepoint == 3)
 fit_list_short[f, ]
 
@@ -247,24 +284,8 @@ mse_long_T3 <- mse_long_T3[mse_long_T3$timepoint > 3,]
 mse_long_T3$timepoint <- factor(mse_long_T3$timepoint)
 head(mse_long_T3)
 
-plot_long_T3 <- ggplot(data = mse_long_T3, aes(y = mse, x=timepoint)) +
-  geom_violin(show.legend=FALSE, fill = qualitative_hcl(3)[2]) +
-  labs(y="MSE", x="Timepoint") +
-  theme(axis.text=element_text(size=11),
-        axis.title=element_text(size=11),
-        title=element_text(size = 11)) +
-  ggtitle(label = "Multivariate, Training up to T3")
 
-ggsave(grid.arrange(plot_basic_long + scale_y_continuous(limits = c(0,8)),
-                    plot_basic_uni  + scale_y_continuous(limits = c(0,8)),
-                    plot_long_T3 + scale_y_continuous(limits = c(0, 6.5)),
-                    plot_training_uni + scale_y_continuous(limits = c(0, 6.5)),
-                    nrow = 2, ncol = 2),
-       file = "plots/plot_long-uni_basic-training.pdf",
-       width = 20, height = 15, units = "cm")
-file.copy(from = "plots/plot_long-uni_basic-training.pdf", to = paste0(dir_manuscript, "/figures"), overwrite = TRUE)
-
-# Kolmogorov-Smirnov test and Wasserstein distance for predictors up to T1 to T5 vs. T6
+# Kolmogorov-Smirnov test and Wasserstein distance for predictors until T1 to T5 vs. T6
 # Wasserstein with p = 2 (squared distance)
 # for each outcome (T1-T6) separately
 table_w_uni <- table_p_uni <- matrix(NA, 2, 6)
@@ -284,43 +305,49 @@ for(o in 4:6) {
   table_w_uni[2, o] <- transport::wasserstein1d(mse_uni_training[mse_uni_training$timepoint == o, "mse"], mse_long_T3[mse_long_T3$timepoint == o, "mse"], p = 2)
 }
 
-table_uni <- cbind(round(table_p_uni, 3),
-                   round(table_w_uni, 3)
-)
+table_p_uni <- round(table_p_uni, 2)
+table_w_uni <-  round(table_w_uni, 2)
+summary(c(table_w_uni))
 
 # basic
 desc_uni <- rbind(
-  cbind(round(do.call(cbind, tapply(mse_uni_basic$mse, mse_uni_basic$timepoint, summary)), 3),
-        round(do.call(cbind, tapply(mse_long_basic$mse, mse_long_basic$timepoint, summary)), 3)
+  cbind(round(do.call(cbind, tapply(mse_uni_basic$mse, mse_uni_basic$timepoint, summary)), 2),
+        round(do.call(cbind, tapply(mse_long_basic$mse, mse_long_basic$timepoint, summary)), 2)
   ),
+  cbind(round(do.call(cbind, tapply(mse_uni_basic$mse, mse_uni_basic$timepoint, function(cl) table(custom_cut(cl))/length(cl))), 2),
+        round(do.call(cbind, tapply(mse_long_basic$mse, mse_long_basic$timepoint, function(cl) table(custom_cut(cl))/length(cl))), 2)
+  ),
+    #table(custom_cut(cl))/length(cl)))
   #training
   cbind(matrix(NA, 6, 3),
-        round(do.call(cbind, tapply(mse_uni_training$mse, mse_uni_training$timepoint, summary)), 3),
+        round(do.call(cbind, tapply(mse_uni_training$mse, mse_uni_training$timepoint, summary)), 2),
         matrix(NA, 6, 3),
-        round(do.call(cbind, tapply(mse_long_T3$mse, mse_long_T3$timepoint, summary)), 3)
+        round(do.call(cbind, tapply(mse_long_T3$mse, mse_long_T3$timepoint, summary)), 2)
+  ),
+  cbind(matrix(NA, 4, 3),
+        round(do.call(cbind, tapply(mse_uni_training$mse, mse_uni_training$timepoint, function(cl) table(custom_cut(cl))/length(cl))), 2),
+        matrix(NA, 4, 3),
+        round(do.call(cbind, tapply(mse_long_T3$mse, mse_long_T3$timepoint, function(cl) table(custom_cut(cl))/length(cl))), 2)
   )
 )
-desc_uni <- round(desc_uni, 3)
+desc_uni <- round(desc_uni, 2)
 colnames(desc_uni) <- rep(paste0("T", 1:G), 2)
-rownames(desc_uni) <- rep(c("Minimum", "1st Quartile", "Median", "Mean", "3rd Quartile", "Maximum"), 2)
+rownames(desc_uni) <- rep(c("Minimum", "1st Quartile", "Median", "Mean", "3rd Quartile", "Maximum",
+                            "\\% large", "\\% medium", "\\% small", "\\% tiny"), 2)
 desc_uni
 
-print_tab(table_uni,
-          name_rownames = "Predictors",
-          file = paste0(dir_manuscript, "/tables/table_univariate.tex"),
-          addr = list("pos" = list(-1),
-                      "command" = c("\\hline \n & \\multicolumn{6}{c}{Kolmogorov-Smirnov p-value} & \\multicolumn{6}{c}{Wasserstein Distance} \\\\ \\cmidrule{2-7} \\cmidrule{8-13}")
-          ),
-          caption = "Tests for Differences in the Distributions of Mean Squared Error for the Multivariate versus the Univariate Random Forests.",
-          label = "tb:test_mse_univariate")
+apply(desc_uni[17:20, 1:6], 1, median, na.rm = TRUE)
+
 
 print_tab(desc_uni,
           name_rownames = "",
-          file = paste0(dir_manuscript, "/tables/descriptives_univariate.tex"),
-          addr = list("pos" = list(-1, 0, 6),
+          file = paste0(dir_som, "/tables/descriptives_univariate.tex"),
+          addr = list("pos" = list(-1, 0, 6, 10, 16),
                       "command" = c("\\hline \n & \\multicolumn{6}{c}{Univariate} & \\multicolumn{6}{c}{Multivariate} \\\\ \\cmidrule{2-7} \\cmidrule{8-13}",
                                    "\\hline \n Basic &&&&&&&&&&&& \\\\",
-                                   "\\hline \n Training T3 &&&&&&&&&&&& \\\\ \\hline \n ")
+                                   "\\hline \n Explained Var. & \\multicolumn{12}{c}{} \\\\ \\hline \n",
+                                   "\\hline \n Training until T3 &&&&&&&&&&&& \\\\ \\hline \n ",
+                                   "\\hline \n Explained Var. & \\multicolumn{12}{c}{} \\\\ \\hline \n")
           ),
           caption = "Descriptives on the Distributions of Mean Squared Error for the Univariate versus Multivariate Random Forests.",
           label = "tb:desc_mse_univariate")
@@ -331,42 +358,6 @@ mean_mse_reg <- readRDS("Data_analysis/mean_mse_reg.rds")
 
 fs <- which(fit_list_short$outcome == "multi_long" & fit_list_short$predictors == "training")
 fit_list_short[fs, ]
-
-plot_list_reg <- vector("list", length = G)
-
-for (f in fs) {
-  mse_long <- data.frame("id" = rep(mean_mse_reg[[f]]$ids, G),
-                         "timepoint" = rep(1:G, each = nrow(mean_mse_reg[[f]])),
-                         "mse" = do.call(c, mean_mse_reg[[f]][ , 2:(G + 1)]))
-  mse_long$timepoint <- factor(mse_long$timepoint)
-  head(mse_long)
-
-
-  plot_list_reg[[f - fs[1] + 1]] <- ggplot(data = mse_long, aes(y = mse, x=timepoint)) +
-    geom_violin(show.legend=FALSE, fill = qualitative_hcl(3)[2]) +
-    labs(y="MSE", x="Timepoint") +
-    theme(axis.text=element_text(size=11),
-          axis.title=element_text(size=11),
-          title=element_text(size = 11)) +
-    scale_y_continuous(limits = c(0, 6.5)) +
-    ggtitle(label = paste0("Lasso Regression, Training T", f - fs[1] + 1))
-
-}
-
-ggsave(marrangeGrob(plot_list, layout_matrix = matrix(1:G, 2, 3, byrow = TRUE), top = NULL),
-       file="plots/plots_mse_longitudinal_reg.pdf",
-       width=30, height=15, units="cm")
-file.copy(from = "plots/plots_mse_longitudinal.pdf", to = paste0(dir_manuscript, "/figures"), overwrite = TRUE)
-
-ggsave(grid.arrange(plot_list[[3]] + scale_y_continuous(limits = c(0, 6.5)),
-                    plot_list_reg[[3]] + scale_y_continuous(limits = c(0, 6.5)),
-                    plot_list[[6]] + scale_y_continuous(limits = c(0, 6.5)),
-                    plot_list_reg[[6]] + scale_y_continuous(limits = c(0, 6.5)),
-                    nrow = 2, ncol = 2),
-       file = "plots/plot_long_MRF-reg.pdf",
-       width = 20, height = 15, units = "cm")
-file.copy(from = "plots/plot_long_MRF-reg.pdf", to = paste0(dir_manuscript, "/figures"), overwrite = TRUE)
-
 
 # Kolmogorov-Smirnov test and Wasserstein distance
 # Wasserstein with p = 2 (squared distance)
@@ -383,33 +374,131 @@ for(o in 1:6) {
   }
 }
 
-table_reg <- cbind(round(table_p_reg, 3),
-                   round(table_w_reg, 3)
-)
+table_p_reg <- round(table_p_reg, 2)
+table_w_reg <- round(table_w_reg, 2)
+summary(c(table_w_reg))
 
-# exemplarily for up to T1 versus up to T6
-desc_reg <- cbind(apply(mean_mse_reg[[fs[1]]][, -c(1,8)], 2, summary),
-                         apply(mean_mse_reg[[fs[6]]][, -c(1,8)], 2, summary)
+# exemplarily for until T1 versus until T6
+desc_reg <- rbind(cbind(apply(mean_mse_reg[[fs[1]]][, -c(1,8)], 2, summary),
+                        apply(mean_mse_reg[[fs[6]]][, -c(1,8)], 2, summary)),
+                  cbind(apply(mean_mse_reg[[fs[1]]][, -c(1,8)], 2, function(cl) table(custom_cut(cl))/length(cl)),
+                        apply(mean_mse_reg[[fs[6]]][, -c(1,8)], 2, function(cl) table(custom_cut(cl))/length(cl)))
 )
-desc_reg <- round(desc_reg, 3)
+desc_reg <- round(desc_reg, 2)
 colnames(desc_reg) <- rep(paste0("T", 1:G), 2)
-rownames(desc_reg) <- c("Minimum", "1st Quartile", "Median", "Mean", "3rd Quartile", "Maximum")
+rownames(desc_reg) <- c("Minimum", "1st Quartile", "Median", "Mean", "3rd Quartile", "Maximum",
+                        "\\% large", "\\% medium", "\\% small", "\\% tiny")
 desc_reg
-
-print_tab(table_reg,
-          name_rownames = "Up to",
-          file = paste0(dir_manuscript, "/tables/table_regression.tex"),
-          addr = list("pos" = list(-1),
-                      "command" = c("\\hline \n & \\multicolumn{6}{c}{Kolmogorov-Smirnov p-value} & \\multicolumn{6}{c}{Wasserstein Distance} \\\\ \\cmidrule{2-7} \\cmidrule{8-13}")
-          ),
-          caption = "Tests for Differences in the Distributions of Mean Squared Error for the Multivariate Random Forests versus Lasso Regressions.",
-          label = "tb:test_mse_regression")
+apply(desc_reg[7:10,], 1, median)
 
 print_tab(desc_reg,
           name_rownames = "Statistic",
-          file = paste0(dir_manuscript, "/tables/descriptives_regression.tex"),
-          addr = list("pos" = list(-1),
-                      "command" = c("\\hline \n & \\multicolumn{6}{c}{Training Predictors up to T1} & \\multicolumn{6}{c}{Training Predictors up to T6} \\\\ \\cmidrule{2-7} \\cmidrule{8-13}")
+          file = paste0(dir_som, "/tables/descriptives_regression.tex"),
+          addr = list("pos" = list(-1, 6),
+                      "command" = c("\\hline \n & \\multicolumn{6}{c}{Training Predictors until T1} & \\multicolumn{6}{c}{Training Predictors until T6} \\\\ \\cmidrule{2-7} \\cmidrule{8-13}",
+                                    "\\hline \n Explained Var. & \\multicolumn{12}{c}{} \\\\ \\hline \n")
           ),
-          caption = "Descriptives on the Distributions of Mean Squared Error for the Training Predictors up to T1 versus T6 for the Lasso Regressions.",
+          caption = "Descriptives on the Distributions of Mean Squared Error for the Training Predictors until T1 versus T6 for the Lasso Regressions.",
           label = "tb:desc_mse_regression")
+
+####----------------------- joint tables for multi vs. uni vs. regression until T3 ------------------------------------------####
+
+table_w_reg
+table_w_uni
+
+table_w_reg_uni <- rbind(table_w_reg, table_w_uni)
+rownames(table_w_reg_uni) <- sub("Training T3", "until T3", rownames(table_w_reg_uni))
+
+print_tab(table_w_reg_uni,
+          name_rownames = "Until",
+          file = paste0(dir_manuscript, "/tables/table_regression_univariate.tex"),
+          addr = list("pos" = list(-1, nrow(table_w_reg)),
+                      "command" = c("\\hline \n & \\multicolumn{6}{c}{Lasso Regression} \\\\ \\cmidrule{2-7}",
+                                    "\\hline \n & \\multicolumn{6}{c}{Univariate Random Forests} \\\\ \\cmidrule{2-7} ")
+          ),
+          caption = "Wasserstein Distances between the Distributions of Mean Squared Error for the Multivariate Random Forests versus Lasso Regressions and Univariate Random Forests.",
+          label = "tb:wasserstein_mse_models")
+
+table_p_reg
+table_p_uni
+
+table_p_reg_uni <- rbind(table_p_reg, table_p_uni)
+rownames(table_p_reg_uni) <- sub("Training T3", "until T3", rownames(table_p_reg_uni))
+table_p_reg_uni <- color_columns(table_p_reg_uni)
+
+print_tab(table_p_reg_uni,
+          name_rownames = "Until",
+          file = paste0(dir_som, "/tables/table_tests_regression_univariate.tex"),
+          addr = list("pos" = list(-1, nrow(table_p_reg)),
+                      "command" = c("\\hline \n & \\multicolumn{6}{c}{Lasso Regression} \\\\ \\cmidrule{2-7}",
+                                    "\\hline \n & \\multicolumn{6}{c}{Univariate Random Forests} \\\\ \\cmidrule{2-7} ")
+          ),
+          caption = "Kolmogorov-Smirnov p-values for Comparisons of the Distributions of Mean Squared Error for the Multivariate Random Forests versus Lasso Regressions and Univariate Random Forests.",
+          label = "tb:ks_mse_models")
+
+
+####----------------------- plot multi vs. uni vs. regression until T3 ------------------------------------------####
+
+# another version: uni vs. multi next to each other
+
+f <- which(fit_list_short$outcome == "multi_long" & fit_list_short$predictors == "training" & fit_list_short$timepoint == 3)
+fit_list_short[f, ]
+
+mse_reg_T3 <- data.frame("id" = rep(mean_mse_reg[[f]]$ids, G),
+                          "timepoint" = rep(1:G, each = nrow(mean_mse_reg[[f]])),
+                          "mse" = do.call(c, mean_mse_reg[[f]][ , 2:(G + 1)]))
+mse_reg_T3 <- mse_reg_T3[mse_reg_T3$timepoint > 3,]
+mse_reg_T3$timepoint <- factor(mse_reg_T3$timepoint)
+head(mse_reg_T3)
+
+f <- which(fit_list_short$outcome == "multi_long" & fit_list_short$predictors == "basic")
+fit_list_short[f, ]
+
+mse_reg_basic <- data.frame("id" = rep(mean_mse_reg[[f]]$ids, G),
+                         "timepoint" = rep(1:G, each = nrow(mean_mse_reg[[f]])),
+                         "mse" = do.call(c, mean_mse_reg[[f]][ , 2:(G + 1)]))
+mse_reg_basic$timepoint <- factor(mse_reg_basic$timepoint)
+head(mse_reg_basic)
+
+mse_long_uni_T3 <- rbind(mse_long_T3, mse_uni_training, mse_reg_T3)
+mse_long_uni_T3$Model <- rep(c("multivariate", "univariate", "lasso"),
+                               c(nrow(mse_long_T3), nrow(mse_uni_training), nrow(mse_reg_T3)))
+
+mse_long_uni_basic <- rbind(mse_long_basic, mse_uni_basic, mse_reg_basic)
+mse_long_uni_basic$Model <- rep(c("multivariate", "univariate", "lasso"),
+                               c(nrow(mse_long_basic), nrow(mse_uni_basic), nrow(mse_reg_basic)))
+
+
+plot_long_uni_T3 <- ggplot(data = mse_long_uni_T3, aes(y = mse, x=timepoint, fill=Model)) +
+  geom_violin(show.legend = TRUE, position = position_dodge(0.9)) +
+  geom_boxplot(width = 0.2, alpha = 0.2, position = position_dodge(0.9), show.legend = FALSE) +
+  geom_hline(yintercept = 1 - .09, color = "azure4", linetype = 3) +
+  geom_hline(yintercept = 1 - .16, color = "azure4", linetype = 2) +
+  geom_hline(yintercept = 1 - .25, color = "azure4", linetype = 1) +
+  ylim(0, 4) +
+  scale_fill_manual(values=RColorBrewer::brewer.pal(n = 3, name = "Set3")) +
+  labs(y="MSE", x="Status Test") +
+  theme(axis.text=element_text(size=11),
+        axis.title=element_text(size=11),
+        title=element_text(size = 11)) +
+  ggtitle(label = "Training until T3")
+
+plot_long_uni_basic <- ggplot(data = mse_long_uni_basic, aes(y = mse, x=timepoint, fill=Model)) +
+  geom_violin(show.legend = FALSE, position = position_dodge(0.9)) +
+  geom_boxplot(width = 0.2, alpha = 0.2, position = position_dodge(0.9), show.legend = FALSE) +
+  geom_hline(yintercept = 1 - .09, color = "azure4", linetype = 3) +
+  geom_hline(yintercept = 1 - .16, color = "azure4", linetype = 2) +
+  geom_hline(yintercept = 1 - .25, color = "azure4", linetype = 1) +
+  ylim(0, 4) +
+  scale_fill_manual(values=RColorBrewer::brewer.pal(n = 3, name = "Set3")) +
+  labs(y="MSE", x="Status Test") +
+  theme(axis.text=element_text(size=11),
+        axis.title=element_text(size=11),
+        title=element_text(size = 11)) +
+  ggtitle(label = "Basic Predictors")
+
+ggsave(grid.arrange(plot_long_uni_basic, plot_long_uni_T3,
+                    nrow = 1, ncol = 2, widths = c(3,2)),
+       file = "plots/plot_multi-uni-reg.pdf",
+       width = 30, height = 12, units = "cm")
+file.copy(from = "plots/plot_multi-uni-reg.pdf", to = paste0(dir_manuscript, "/figures"), overwrite = TRUE)

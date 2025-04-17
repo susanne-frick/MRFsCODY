@@ -128,9 +128,43 @@ A_ord <- merge(A_ord, area, by.x = "uebung", by.y = "Uebung", all.x = TRUE)
 
 devtools::load_all("~/Dokumente/packages/DataAnalysisSimulation")
 
+# for figure in revision
+A_ord_rev <- A_ord
+A_ord_rev$area <- recode.df(A_ord_rev$Bereich,
+                        c("Zahlen-Größen-Verknüpfung", "Faktenwissen und Rechnen",  "Teil-Ganzes-Verständnis",
+                          "Arbeitsgedächtnis", "Dezimalsystem"),
+                        c("number-size-connection", "facts and calculating", "part-whole-understanding",
+                         "working memory", "decimal system"))
+A_ord_rev$area_short <- recode.df(A_ord_rev$area,
+                                  c("number-size-connection", "facts and calculating", "part-whole-understanding",
+                                    "working memory", "decimal system"),
+                                  c("NSC", "FKC", "WPU",
+                                    "WM", "DS"))
+A_ord_rev <- A_ord_rev[order(A_ord_rev$Trainingstag), c("Trainingstag", "uebung", "area_short")]
+A_ord_rev$uebung_num <- as.numeric(gsub("^G|^G0", "", A_ord_rev$uebung))
+
+table_a <- matrix(NA, 5, 30)
+rownames(table_a) <- c("WM", "DS", "FKC", "WPU", "NSC")
+colnames(table_a) <- 1:30
+table_a
+
+for(i in 1:(nrow(A_ord_rev) - 2)) {
+  rw <- A_ord_rev[i,]
+  if(is.na(table_a[which(rownames(table_a) == rw$area_short), which(colnames(table_a) == rw$Trainingstag)])) {
+    table_a[which(rownames(table_a) == rw$area_short), which(colnames(table_a) == rw$Trainingstag)] <- rw$uebung_num
+  } else {
+    table_a[which(rownames(table_a) == rw$area_short), which(colnames(table_a) == rw$Trainingstag)] <- paste(
+      table_a[which(rownames(table_a) == rw$area_short), which(colnames(table_a) == rw$Trainingstag)],
+      rw$uebung_num, sep = ",")
+
+  }
+}
+table_a
+write.csv(table_a, file = "Feature_engineering/table_revision.csv")
+
 prep_loads <- function(loads, cols = c("score_PC1|score_PC2|leveldif_PC1|leveldif_PC2|time_PC1$"), A_o = A_ord, ar = area)  {
   #if(! (cols[2] %in% colnames(loads))) cols[2] <- "leveldif_PC1"
-  pca_loads_t <- data.frame(round(loads[, grep(cols, colnames(loads))], 3))
+  pca_loads_t <- data.frame(round(loads[, grep(cols, colnames(loads))], 2))
   pca_loads_t$score_rep <- recode.df(rownames(pca_loads_t),
                                       paste0("Score_", A_o$uebung, "_T", A_o$Trainingstag),
                                       paste0(A_o$uebung, "_rep", A_o$rep))
@@ -155,65 +189,105 @@ loads4[order(loads4$leveldif_PC3),]
 # time is not that clear
 lapply(pca_loads_timepoints, function(pl) pl[order(pl$time_PC1), -c(1:4)])
 
-# tables for paper
-# prep_loads_paper <- function(loads) {
-#   loads$area <- recode.df(loads$area,
-#                              c("Zahlen-Größen-Verknüpfung", "Faktenwissen und Rechnen",  "Teil-Ganzes-Verständnis",
-#                                "Arbeitsgedächtnis", "Dezimalsystem"),
-#                              c("number-size-connection", "facts and calculating", "part-whole-understanding",
-#                                "working memory", "decimal system"))
-#   loads$ability <- recode.df(loads$ability,
-#                                 c("basal", "komplex"),
-#                                 c("basal", "complex"))
-#   loads$score_rep <- sub("_", " ", loads$score_rep)
-#   # re-order columns
-#   loads <- loads[, c(6:4, 1:3)]
-#   colnames(loads) <- c("Ability", "Area", "Task", "PC1 level", "PC2 level difference", "PC1 time")
-#   loads
-#
-# }
-
 prep_loads_paper <- function(loads) {
   loads$area <- recode.df(loads$area,
                           c("Zahlen-Größen-Verknüpfung", "Faktenwissen und Rechnen",  "Teil-Ganzes-Verständnis",
                             "Arbeitsgedächtnis", "Dezimalsystem"),
-                          LETTERS[1:5])
+                          c("NSC", "FKC", "WPU", "WM", "DS"))
+  # WM = working memory, DS = Decimal
+  # System, FKC = Factual Knowledge and Calculating, WPU = whole-part-understanding,
+  # NSC = number-size-connection.
   loads$trial <- substr(loads$score_rep, 8, 8)
   loads$score_rep <- substr(loads$score_rep, 1, 3)
+  loads
+
+  loads[, grep("PC", colnames(loads))] <- matrix(paste(
+    paste0("\\cellcolor{",
+           cut(as.matrix(loads[, grep("PC", colnames(loads))]),
+               breaks = c(-1, -.5, -.3, -.1, .1, .3, .5, 1),
+               labels = c("blue!40", "blue!25", "blue!10", "white", "red!10", "red!25", "red!40"),
+               include.lowest = TRUE),
+           "}"),
+    format(unlist(loads[, grep("PC", colnames(loads))]), nsmall = 2)
+  ), nrow = nrow(loads))
+
+  # add column day
+  loads$day <- rep(1:(nrow(loads)/2), each = 2)
+
   # re-order columns
-  loads <- loads[, c("area", "score_rep", "trial", "score_PC1", "score_PC2", "leveldif_PC1", "leveldif_PC2", "time_PC1")]
-  colnames(loads) <- c("Area", "Task", "Trial", "PC1 level", "PC2 level", "PC1 level difference", "PC2 level difference", "PC1 time")
+  if("leveldif_PC2" %in% colnames(loads)) {
+    loads <- loads[, c("day", "area", "score_rep", "trial", "score_PC1", "score_PC2", "leveldif_PC1", "leveldif_PC2", "time_PC1")]
+    colnames(loads) <- c("Day", "Area", "Task", "Trial", "PC1 level", "PC2 level", "PC1 level difference", "PC2 level difference", "PC1 time")
+  } else {
+    loads <- loads[, c("day", "area", "score_rep", "trial", "score_PC1", "score_PC2", "leveldif_PC1", "time_PC1")]
+    colnames(loads) <- c("Day", "Area", "Task", "Trial", "PC1 level", "PC2 level", "PC1 level difference", "PC1 time")
+  }
   loads
 
 }
 
-loads_paper <- lapply(pca_loads_timepoints[2:6], prep_loads_paper)
+loads_paper <- lapply(pca_loads_timepoints, prep_loads_paper)
 loads_paper
 
 # textables
-header <- list()
-header$pos <- list(-1)
-header$command <- c("\\hline \n Area & Task & Trial & \\multicolumn{2}{c}{Level} & \\multicolumn{2}{c}{Level Difference} & Time \\\\
-                    \\multicolumn{3}{c}{} & PC1 & PC2 & PC1 & PC2 & PC1 \\\\",
-                    "\\hline \\multicolumn{8}{l}{\\small \\textit{Note.} A = number-size-connection, B = facts and calculating}\\\\
-                    \\multicolumn{8}{l}{\\small C = part-whole-understanding, D = working memory}\\\\
-                    \\multicolumn{8}{l}{\\small E = decimal system.}\\\\")
+header_T1 <- list()
+header_T1$pos <- list(-1)
+header_T1$command <- c("\\hline \n Day & Area & Task & Trial & \\multicolumn{2}{c}{Level} & \\multicolumn{1}{c}{Level Difference} & Time \\\\
+                    \\hline \\multicolumn{4}{c}{} & PC1 & PC2 & PC1 & PC1 \\\\",
+                          "\\hline \\multicolumn{8}{l}{\\small \\textit{Note.} WM = working memory, DS = Decimal System,}\\\\
+                    \\multicolumn{8}{l}{\\small FKC = Factual Knowledge and Calculating, WPU = whole-part-understanding,}\\\\
+                    \\multicolumn{8}{l}{\\small NSC = number-size-connection.} \\\\")
+header_short <- list()
+header_short$pos <- list(-1)
+header_short$command <- c("\\hline \n Day & Area & Task & Trial & \\multicolumn{2}{c}{Level} & \\multicolumn{2}{c}{Level Difference} & Time \\\\
+                    \\hline \\multicolumn{4}{c}{} & PC1 & PC2 & PC1 & PC2 & PC1 \\\\",
+                    "\\hline \\multicolumn{9}{l}{\\small \\textit{Note.} WM = working memory, DS = Decimal System,}\\\\
+                    \\multicolumn{9}{l}{\\small FKC = Factual Knowledge and Calculating, WPU = whole-part-understanding,}\\\\
+                    \\multicolumn{9}{l}{\\small NSC = number-size-connection.} \\\\")
+header_long <- list()
+header_long$pos <- list(-1)
+header_long$command <- c("\\hline \n Day & Area & Task & Trial & \\multicolumn{2}{c}{Level} & \\multicolumn{2}{c}{Level Difference} & Time \\\\
+                    \\hline \\multicolumn{4}{c}{} & PC1 & PC2 & PC1 & PC2 & PC1 \\\\ \\hline \\endfirsthead
+                    {{\\bfseries \\tablename \\hspace*{0.7pt} \\thetable{} -- continued}} \\\\
+                    \\hline \n Day & Area & Task & Trial & \\multicolumn{2}{c}{Level} & \\multicolumn{2}{c}{Level Difference} & Time \\\\
+                    \\hline \\multicolumn{4}{c}{} & PC1 & PC2 & PC1 & PC2 & PC1 \\\\ \\hline \\endhead
+                    {\\small -- continued --} \\endfoot
+                    \\multicolumn{9}{l}{\\small \\textit{Note.} WM = working memory, DS = Decimal System,}\\\\
+                    \\multicolumn{9}{l}{\\small FKC = Factual Knowledge and Calculating, WPU = whole-part-understanding,}\\\\
+                    \\multicolumn{9}{l}{\\small NSC = number-size-connection.}\\endlastfoot", "")
 
-for(i in 2:6) {
-  header$pos <- list(-1, nrow(loads_paper[[i-1]]))
-  print(xtable::xtable(loads_paper[[i-1]],
-                       digits = c(rep(0, 4), rep(3, 5)),
-                       caption = paste0("Loadings for the Principal Components extracted from the Predictors Up to T", i),
+for(i in 1:6) {
+  if(i == 1) {
+    header <- header_T1
+    fl <- TRUE
+    tab <- "tabular"
+  } else if(i < 5) {
+    header <- header_short
+    fl <- TRUE
+    tab <- "tabular"
+  } else {
+    header <- header_long
+    fl <- FALSE
+    tab <- "longtable"
+  }
+  header$pos <- list(-1, nrow(loads_paper[[i]]))
+  print(xtable::xtable(loads_paper[[i]],
+                       digits = c(rep(0, 5), rep(2, ifelse(i == 1, 4, 5))),
+                       align = rep("r", ncol(loads_paper[[i]]) + 1),
+                       caption = paste0("Loadings for the Principal Components extracted from the Predictors Until T", i),
                        label = paste0("tb:PCA_loadings_T", i)),
         include.colnames = FALSE, include.rownames = FALSE,
         hline.after=c(0),
         sanitize.rownames.function=function(x){x},
         sanitize.colnames.function = function(x){x},
         sanitize.text.function = function(x){x},
-        NA.string = "", table.placement = "htp", add.to.row = header,
-        caption.placement = "top", latex.environments = NULL,
+        NA.string = "", table.placement = "htp",
+        add.to.row = header,
+        caption.placement = "top",
+        tabular.environment = tab, floating = fl,
         file = paste0(dir_manuscript, "tables/textable_pca_loads_T", i, ".tex"))
   file.copy(from = paste0(dir_manuscript, "tables/textable_pca_loads_T", i, ".tex"),
             to = paste0("~/Dokumente/FAIR/Reha/paper/SOM/tables/textable_pca_loads_T", i, ".tex"),
             overwrite = TRUE)
 }
+# note: T5 and T6 were modified by hand: put into spacing environment
