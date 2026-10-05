@@ -5,7 +5,7 @@ library(gridExtra)
 devtools::load_all()
 devtools::load_all("~/Dokumente/packages/DataAnalysisSimulation/")
 
-dir_manuscript <- "~/Dokumente/FAIR/Reha/paper/MRFs CODY/"
+dir_manuscript <- "~/Dokumente/FAIR/Reha/paper/mrfs_cody_man/"
 
 G <- 6
 # load fit lists
@@ -23,7 +23,7 @@ get_f <- function(outcome, predictors, timepoint, fl = fit_list_short) {
 
 ####------------------------ variable importance to select relevant predictors -------------------------#####
 
-imp <- readRDS("Data_analysis/mean_importance.rds")
+imp <- readRDS("Data_analysis/mean_importance_con_std.rds")
 
 # check
 length(imp)
@@ -90,8 +90,8 @@ name_variables <- function(vec) {
 plots_training3 <- vector("list", 3)
 
 for (tp in c(4,5,6)) {
-  fit_f <- readRDS(paste0("results_MRFs/fit_MRF_f", get_f("uni", "training3", tp), ".rds"))
-  fit_f_single <- readRDS(paste0("results_MRFs/results_MRF_f", get_f("uni", "training3", tp, fl = fit_list)[1], ".rds"))
+  fit_f <- readRDS(paste0("results_MRFs_con_std/fit_MRF_con_std_f", get_f("uni", "training3", tp), ".rds"))
+  fit_f_single <- readRDS(paste0("results_MRFs_con_std/results_MRF_con_std_f", get_f("uni", "training3", tp, fl = fit_list)[1], ".rds"))
 
   plot_list <- pd_plot(fit = fit_f,
                        data_plot = rbind(fit_f_single$data$train, fit_f_single$data$test),
@@ -117,7 +117,7 @@ for (tp in c(4,5,6)) {
 
   # legend only on last plot, add title
   for(p in 1:length(plot_list$plot_list)) {
-    plot_list$plot_list[[p]] <- plot_list$plot_list[[p]] + ggtitle(paste0("T", tp)) +
+    plot_list$plot_list[[p]] <- plot_list$plot_list[[p]] + ggtitle(paste0("O(T", tp, ")")) +
       xlab(x_y_names[p, "Predictor1"]) + ylab(x_y_names[p, "Predictor2"])
     if(! (tp %in% 6)) plot_list$plot_list[[p]] <- plot_list$plot_list[[p]] + theme(legend.position = "none")
   }
@@ -149,11 +149,11 @@ file.copy(from = "plots/PD_plot_uni_training3.jpeg",
 # pd_plot delivers mean prediction across folds if a list of fits is given
 # fit_f_single is needed to supply the dataset
 
-plots_basic <- vector("list", 3)
+plots_basic <- vector("list", 6)
 
-for (tp in 2:6) {
-  fit_f <- readRDS(paste0("results_MRFs/fit_MRF_f", get_f("uni", "basic", tp), ".rds"))
-  fit_f_single <- readRDS(paste0("results_MRFs/results_MRF_f", get_f("uni", "basic", tp, fl = fit_list)[1], ".rds"))
+for (tp in c(1:6)) {
+  fit_f <- readRDS(paste0("results_MRFs_con_std/fit_MRF_con_std_f", get_f("uni", "basic", tp), ".rds"))
+  fit_f_single <- readRDS(paste0("results_MRFs_con_std/results_MRF_con_std_f", get_f("uni", "basic", tp, fl = fit_list)[1], ".rds"))
 
   plot_list <- pd_plot(fit = fit_f,
                        data_plot = rbind(fit_f_single$data$train, fit_f_single$data$test),
@@ -179,7 +179,7 @@ for (tp in 2:6) {
 
   # legend only on last plot, add title
   for(p in 1:length(plot_list$plot_list)) {
-    plot_list$plot_list[[p]] <- plot_list$plot_list[[p]] + ggtitle(paste0("T", tp)) +
+    plot_list$plot_list[[p]] <- plot_list$plot_list[[p]] + ggtitle(paste0("O(T", tp, ")")) +
       xlab(x_y_names[p, "Predictor1"]) + ylab(x_y_names[p, "Predictor2"])
     if(! (tp %in% 6)) plot_list$plot_list[[p]] <- plot_list$plot_list[[p]] + theme(legend.position = "none")
   }

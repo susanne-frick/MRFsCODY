@@ -35,7 +35,7 @@ for(g in 1:G) {
   data_complete <- na.omit(Daten_wide_pca[, c("Id", outcomes, predictors_training[[g]])])
 
   cor_data[[g]] <- cor(data_complete[, predictors_training[[g]]], data_complete[, outcomes])
-  colnames(cor_data[[g]]) <- paste0("T", 1:G)
+  colnames(cor_data[[g]]) <- paste0("O(T", 1:G, ")")
 
   rownames(cor_data[[g]]) <- gsub("leveldif_", "Level Diff. ", rownames(cor_data[[g]]))
   rownames(cor_data[[g]]) <- gsub("score_", "Level ", rownames(cor_data[[g]]))
@@ -49,7 +49,7 @@ cor_data
 
 pdf(file = "plots/corplots.pdf", width = 7, height = 21)
 for (g in 1:G) {
-  corrplot(cor_data[[g]], method = "square", title = paste0("Training Data Until T", g),
+  corrplot(cor_data[[g]], method = "square", title = paste0("P(T", g, ")"),
            addCoef.col = ifelse(abs(cor_data[[g]]) > .1, yes = "black", no = "transparent"),
            col = colorRampPalette((c("#880C19", "#B2182B", "#D6604D", "#F4A582", "#FDDBC7",
                                      "#FFFFFF","#D1E5F0", "#92C5DE", "#43A7C3", "#217CAC", "#145F89")) )(200),

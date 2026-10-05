@@ -25,7 +25,8 @@ G <- 6
 
 tp <- 5 # training up to tp
 f <- get_f("multi_long", "training", tp)
-fit_f <- readRDS(paste0("results_MRFs/fit_MRF_f", f, ".rds"))
+# fit_f <- readRDS(paste0("results_MRFs/fit_MRF_f", f, ".rds"))
+fit_f <- readRDS(paste0("results_MRFs_con_std/fit_MRF_con_std_f", f, ".rds"))
 
 # obtain predictions for test data each
 predictions_f <- vector("list", length(fit_f))
@@ -43,6 +44,7 @@ predictions_f$mse <- rowMeans((predictions_f[, grep("^Score_gold_sum", colnames(
                                  predictions_f[, grep("obs_Score_gold_sum", colnames(predictions_f))])^2)
 
 plot_spaghetti <- function(dat, plot_cols, color_col, n_color = 4, main = "Status Test",
+                           xlab = "Training Day", labels_x = TRUE, yl = NULL,
                            deficiency = NULL,
                            file = NULL) {
   # deficiency: deutan, tritan, protan = simulation functions in colorspace
@@ -65,11 +67,14 @@ plot_spaghetti <- function(dat, plot_cols, color_col, n_color = 4, main = "Statu
   }
 
   if(isFALSE(is.null(deficiency))) cols <- deficiency(cols)
+  if (is.null(yl)) yl <- range(dat_plot, na.rm = TRUE)
 
   pdf(file = file, width = 7, height = 6)
   par(mar = c(5,4,4,7)) #default c(5,4,4,2) + 0.1
-  plot(1:ncol(dat_plot), rep(0, ncol(dat_plot)), ylim = range(dat_plot, na.rm = TRUE),
-       ylab = "Score", xlab = "Repetition", main = main, type = "n")
+  plot(1:ncol(dat_plot), rep(0, ncol(dat_plot)),
+       ylim = yl,
+       ylab = "Score", xlab = xlab, main = main, type = "n", xaxt = "none")
+  axis(side = 1, at = 1:ncol(dat_plot), labels = labels_x)
   for(p in 1:nrow(dat_plot)) lines(1:ncol(dat_plot), dat_plot[p,], col = cols[p])
   dev.off()
 
@@ -80,6 +85,8 @@ plot_spaghetti(predictions_f,
                plot_cols = grep("obs_Score_gold_sum", colnames(predictions_f)),
                color_col = "obs_Score_gold_sum_1",
                main = "Observed",
+               xlab = "Status Test", labels_x = paste0("O(T", 1:G, ")"),
+               yl = c(-2.5, 3),
                file = "plots/plot_spaghetti_gold_observed.pdf")
 
 plot_spaghetti(predictions_f,
@@ -92,6 +99,8 @@ plot_spaghetti(predictions_f,
                plot_cols = grep("^Score_gold_sum", colnames(predictions_f)),
                color_col = "Score_gold_sum_1",
                main = "Predicted",
+               xlab = "Status Test",
+               yl = c(-2.5, 3), labels_x = paste0("O(T", 1:G, ")"),
                file = "plots/plot_spaghetti_gold_predicted.pdf")
 
 plot_spaghetti(predictions_f,
@@ -162,7 +171,9 @@ pdf(file = "plots/plot_spaghetti_gam_observed.pdf", width = 7, height = 6)
 par(mar = c(5,4,4,5), xpd = TRUE)
 plot(1:ncol(dat_plot), rep(0, ncol(dat_plot)),
      ylim = range(dat_plot, na.rm = TRUE),
-     ylab = "Score", xlab = "Timepoint", main = "Observed Trajectories", type = "n")
+     ylab = "Score", xlab = "Status Test", main = "Observed Trajectories", type = "n",
+     xaxt = "n")
+axis(side = 1, at = 1:ncol(dat_plot), labels = paste0("O(T", 1:ncol(dat_plot), ")"))
 for(p in 1:nrow(dat_plot)) lines(1:ncol(dat_plot), dat_plot[p,], col = "lightgrey")
 lines(1:G, pred_grade2$pred, type = "l", col = cols[1])
 polygon(x = c(1:G, G:1),
@@ -187,7 +198,7 @@ dev.off()
 
 library(glmnet)
 
-res <- readRDS("Data_analysis/results_reg.rds")
+res <- readRDS("Data_analysis/results_reg_con_std.rds")
 
 tp <- 5 # training up to tp
 f <- get_f("multi_long", "training", tp)
@@ -213,7 +224,7 @@ plot_spaghetti(predictions_reg_f,
                plot_cols = grep("^Score_gold_sum", colnames(predictions_reg_f)),
                color_col = "Score_gold_sum_1",
                main = "Predicted Regression",
-               file = "plots/plot_spaghetti_gold_predicted_regression.pdf")
+               file = "plots/plot_spaghetti_gold_predicted_regression_con_std.pdf")
 
 ####--------------------- Status tests without z-standardization -----------------------####
 
@@ -246,3 +257,49 @@ plot_observed_unstandardized <- ggplot(data = gold_long, aes(y = status_score, x
         title=element_text(size = 11)) +
   ggtitle(label = "Observed Unstandardized")
 ggsave("plots/density_gold_observed_unstandardized.pdf", plot_observed_unstandardized, width = 7, height = 6)
+
+# GAM by grade
+# concurrent standardization
+Daten_wide[, paste0("con_std_", grep("Score_gold_sum", colnames(Daten_wide), value = TRUE))] <-
+  (Daten_wide[, grep("Score_gold_sum", colnames(Daten_wide))] -
+        mean(do.call(c, Daten_wide[, grep("Score_gold_sum", colnames(Daten_wide))]), na.rm = TRUE)) /
+        sd(do.call(c, Daten_wide[, grep("Score_gold_sum", colnames(Daten_wide))]), na.rm = TRUE)
+psych::describe(Daten_wide[, grep("con_std_Score_gold_sum", colnames(Daten_wide))])
+psych::describe(do.call(c, Daten_wide[, grep("con_std_Score_gold_sum", colnames(Daten_wide))]))
+
+
+pred_con_std_grade2 <- obtain_gam(Daten_wide[Daten_wide$Grade == 2,],
+                          plot_cols = grep("con_std_Score_gold_sum", colnames(Daten_wide)))
+pred_con_std_grade3 <- obtain_gam(Daten_wide[Daten_wide$Grade == 3,],
+                          plot_cols = grep("con_std_Score_gold_sum", colnames(Daten_wide)))
+pred_con_std_grade4 <- obtain_gam(Daten_wide[Daten_wide$Grade == 4,],
+                          plot_cols = grep("con_std_Score_gold_sum", colnames(Daten_wide)))
+
+cols <- RColorBrewer::brewer.pal(3, "Dark2")
+dat_plot <- Daten_wide[, grep("con_std_Score_gold_sum", colnames(Daten_wide))]
+
+pdf(file = "plots/plot_spaghetti_gam_observed_concurrent_standardization.pdf", width = 7, height = 6)
+par(mar = c(5,4,4,5), xpd = TRUE)
+plot(1:ncol(dat_plot), rep(0, ncol(dat_plot)),
+     ylim = range(dat_plot, na.rm = TRUE),
+     ylab = "Score", xlab = "Timepoint", main = "Observed Trajectories", type = "n")
+for(p in 1:nrow(dat_plot)) lines(1:ncol(dat_plot), dat_plot[p,], col = "lightgrey")
+lines(1:G, pred_con_std_grade2$pred, type = "l", col = cols[1])
+polygon(x = c(1:G, G:1),
+        y = c(pred_con_std_grade2$pred - pred_con_std_grade2$disp, pred_con_std_grade2$pred + pred_con_std_grade2$disp),
+        col = adjustcolor(cols[1], alpha.f = .2), border = NA)
+lines(1:G, pred_con_std_grade3$pred, col = cols[2])
+polygon(x = c(1:G, G:1),
+        y = c(pred_con_std_grade3$pred - pred_con_std_grade3$disp, pred_con_std_grade3$pred + pred_con_std_grade3$disp),
+        col = adjustcolor(cols[2], alpha.f = .2), border = NA)
+lines(1:G, pred_con_std_grade4$pred, col = cols[3])
+polygon(x = c(1:G, G:1),
+        y = c(pred_con_std_grade4$pred - pred_con_std_grade4$disp, pred_con_std_grade4$pred + pred_con_std_grade4$disp),
+        col = adjustcolor(cols[3], alpha.f = .2), border = NA)
+abline(h = 0 #mean(Daten_wide[, "con_std_Score_gold_sum_1"], na.rm = TRUE) # mean at T1
+       , col = adjustcolor("black", alpha.f = .8), xpd = FALSE, lty = "dashed")
+legend(x = 6.3, y = 3,
+       legend = 4:2, title = "Grade",
+       fill = rev(cols),
+       bty = "n")
+dev.off()
